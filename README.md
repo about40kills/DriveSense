@@ -19,6 +19,8 @@ The goal is to build a real-time prototype that can warn when a driver shows sig
 - Eye Aspect Ratio calculation
 - Mouth opening ratio calculation
 - Drowsiness and yawning detection
+- Head pose / distraction detection for looking away and looking down
+- Audible alert beeps for unsafe drowsiness or distraction events
 - Dataset saving into CSV
 - Random Forest machine learning model
 - Evaluation using accuracy, precision, recall, and confusion matrix

@@ -1,9 +1,13 @@
 import cv2
 import math
 import joblib
+import pandas as pd
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+import numpy as np
+import time
+import subprocess
 
 MODEL_PATH = "models/face_landmarker.task"
 ML_MODEL_PATH = "models_ml/drowsiness_model.pkl"
@@ -14,6 +18,8 @@ MOUTH = [13, 14, 78, 308]
 
 closed_eye_frames = 0
 open_mouth_frames = 0
+distracted_frames = 0
+last_beep_time = 0.0
 
 def euclidean_distance(p1, p2):
     return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
@@ -57,7 +63,7 @@ base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 options = vision.FaceLandmarkerOptions(
     base_options=base_options,
     output_face_blendshapes=False,
-    output_facial_transformation_matrixes=False,
+    output_facial_transformation_matrixes=True,
     num_faces=1
 )
 
@@ -89,6 +95,10 @@ while True:
     right_ear = 0.0
     avg_ear = 0.0
     mouth_ratio = 0.0
+    pitch = 0.0
+    yaw = 0.0
+    roll = 0.0
+    is_distracted = False
 
     if result.face_landmarks:
         h, w, _ = frame.shape
@@ -111,30 +121,56 @@ while True:
             open_mouth_frames = 0
 
         # Feature order must match training
-        features = [[
-            left_ear,
-            right_ear,
-            avg_ear,
-            mouth_ratio,
-            closed_eye_frames,
-            open_mouth_frames
-        ]]
+        features = pd.DataFrame([{
+            "left_ear": left_ear,
+            "right_ear": right_ear,
+            "avg_ear": avg_ear,
+            "mouth_ratio": mouth_ratio,
+            "closed_eye_frames": closed_eye_frames,
+            "open_mouth_frames": open_mouth_frames
+        }])
 
         prediction = model.predict(features)[0]
-        status_text = prediction
+        
+        if result.facial_transformation_matrixes:
+            pose_matrix = result.facial_transformation_matrixes[0]
+            rmat = pose_matrix[:3, :3]
+            angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+            pitch = angles[0]
+            yaw = angles[1]
+            roll = angles[2]
 
-        if prediction == "AWAKE":
-            status_color = (0, 255, 0)
-        elif prediction == "DROWSY":
-            status_color = (0, 0, 255)
-        elif prediction == "YAWNING":
-            status_color = (0, 165, 255)
+        if abs(pitch) > 20 or abs(yaw) > 20:
+            distracted_frames += 1
         else:
-            status_color = (255, 255, 255)
+            distracted_frames = 0
+
+        if distracted_frames > 15:
+            is_distracted = True
+
+        if is_distracted:
+            status_text = "DISTRACTED"
+            status_color = (0, 0, 255)
+        else:
+            status_text = prediction
+            if prediction == "AWAKE":
+                status_color = (0, 255, 0)
+            elif prediction == "DROWSY":
+                status_color = (0, 0, 255)
+            elif prediction == "YAWNING":
+                status_color = (0, 165, 255)
+            else:
+                status_color = (255, 255, 255)
 
     else:
         closed_eye_frames = 0
         open_mouth_frames = 0
+        distracted_frames = 0
+
+    current_time = time.time()
+    if (is_distracted or status_text in ["DROWSY", "YAWNING", "NO FACE"]) and (current_time - last_beep_time > 1.0):
+        subprocess.Popen(["afplay", "/System/Library/Sounds/Hero.aiff"])
+        last_beep_time = current_time
 
     cv2.putText(frame, f"Left EAR: {left_ear:.3f}", (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
@@ -148,7 +184,13 @@ while True:
     cv2.putText(frame, f"Mouth: {mouth_ratio:.3f}", (20, 115),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-    cv2.putText(frame, f"ML Status: {status_text}", (20, 160),
+    cv2.putText(frame, f"Pitch: {pitch:.1f}", (20, 140),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+    cv2.putText(frame, f"Yaw: {yaw:.1f}", (20, 165),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+    cv2.putText(frame, f"ML Status: {status_text}", (20, 210),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 3)
 
     cv2.imshow("Live ML Drowsiness Detector", frame)
