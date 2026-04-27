@@ -1,0 +1,12 @@
+Accuracy: 0.9920948616600791
+
+Classification Report:
+              precision    recall  f1-score   support
+
+       AWAKE       0.99      0.99      0.99       361
+      DROWSY       1.00      1.00      1.00       203
+     YAWNING       0.98      0.98      0.98       195
+
+    accuracy                           0.99       759
+   macro avg       0.99      0.99      0.99       759
+weighted avg       0.99      0.99      0.99       759
