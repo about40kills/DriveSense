@@ -1,12 +1,15 @@
-Accuracy: 0.9920948616600791
+Temporal Hold-out Accuracy: 0.9960474308300395
 
 Classification Report:
               precision    recall  f1-score   support
 
-       AWAKE       0.99      0.99      0.99       361
-      DROWSY       1.00      1.00      1.00       203
-     YAWNING       0.98      0.98      0.98       195
+       AWAKE       0.98      1.00      0.99       157
+      DROWSY       1.00      1.00      1.00       303
+     YAWNING       1.00      0.99      0.99       299
 
-    accuracy                           0.99       759
-   macro avg       0.99      0.99      0.99       759
-weighted avg       0.99      0.99      0.99       759
+    accuracy                           1.00       759
+   macro avg       0.99      1.00      1.00       759
+weighted avg       1.00      1.00      1.00       759
+
+5-Fold CV Accuracy: 0.9794 ± 0.0220
+Per-fold scores: [np.float64(0.9433), np.float64(0.9644), np.float64(0.9934), np.float64(0.9987), np.float64(0.9974)]
