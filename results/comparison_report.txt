@@ -1,0 +1,15 @@
+RULE-BASED vs ML COMPARISON
+Test set size: 759 rows (last 20%, temporal split)
+
+Metric                         Rule-Based     ML Model
+------------------------------------------------------
+Overall Accuracy                   0.5007       0.9960
+  AWAKE Precision                   0.2857       0.9812
+  AWAKE Recall                      0.9427       1.0000
+  AWAKE F1                          0.4385       0.9905
+  DROWSY Precision                   0.0000       1.0000
+  DROWSY Recall                      0.0000       1.0000
+  DROWSY F1                          0.0000       1.0000
+  YAWNING Precision                   0.9627       1.0000
+  YAWNING Recall                      0.7759       0.9900
+  YAWNING F1                          0.8593       0.9950
