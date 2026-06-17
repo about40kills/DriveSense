@@ -1,0 +1,11 @@
+# Core dependencies for DriveSense
+opencv-python==4.13.0.92
+mediapipe==0.10.35
+pandas==3.0.2
+scikit-learn==1.8.0
+matplotlib==3.10.9
+joblib==1.5.3
+sounddevice==0.5.5
+numpy==2.4.4
+scipy==1.17.1
+Flask==3.0.3

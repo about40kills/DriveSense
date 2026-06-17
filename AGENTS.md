@@ -8,11 +8,22 @@ DriveSense is a real-time driver drowsiness detection system using webcam input,
 
 ## Dependencies
 
-Python with: opencv-python, mediapipe, pandas, scikit-learn, matplotlib, joblib
+Python with dependencies managed in [requirements.txt](file:///Users/davis/Documents/GitHub/DriveSense/requirements.txt):
+- opencv-python
+- mediapipe
+- pandas
+- scikit-learn
+- matplotlib
+- joblib
+- sounddevice
 
-No requirements.txt exists yet — install manually:
+You can automatically set up a virtual environment and install all packages by running:
+```bash
+./setup.sh
 ```
-pip install opencv-python mediapipe pandas scikit-learn matplotlib joblib
+Alternatively, install dependencies manually:
+```bash
+pip install -r requirements.txt
 ```
 
 ## Key Commands
