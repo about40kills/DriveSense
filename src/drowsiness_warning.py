@@ -1,61 +1,19 @@
 import cv2
-import math
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from features import LEFT_EYE, RIGHT_EYE, MOUTH, eye_aspect_ratio, mouth_open_ratio
+
 MODEL_PATH = "models/face_landmarker.task"
 
-# ---------- Landmark index groups ----------
-LEFT_EYE = [33, 160, 158, 133, 153, 144]
-RIGHT_EYE = [362, 385, 387, 263, 373, 380]
-MOUTH = [13, 14, 78, 308]
-
-# ---------- Thresholds ----------
-# Make drowsiness easier to trigger
 EYE_CLOSED_THRESHOLD = 0.20
 MOUTH_OPEN_THRESHOLD = 0.07
 CLOSED_FRAMES_THRESHOLD = 10
 YAWN_FRAMES_THRESHOLD = 25
 
-# ---------- Counters ----------
 closed_eye_frames = 0
 open_mouth_frames = 0
-
-# ---------- Helper functions ----------
-def euclidean_distance(p1, p2):
-    return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
-
-def eye_aspect_ratio(landmarks, eye_indices, w, h):
-    p1 = (landmarks[eye_indices[0]].x * w, landmarks[eye_indices[0]].y * h)
-    p2 = (landmarks[eye_indices[1]].x * w, landmarks[eye_indices[1]].y * h)
-    p3 = (landmarks[eye_indices[2]].x * w, landmarks[eye_indices[2]].y * h)
-    p4 = (landmarks[eye_indices[3]].x * w, landmarks[eye_indices[3]].y * h)
-    p5 = (landmarks[eye_indices[4]].x * w, landmarks[eye_indices[4]].y * h)
-    p6 = (landmarks[eye_indices[5]].x * w, landmarks[eye_indices[5]].y * h)
-
-    vertical1 = euclidean_distance(p2, p5)
-    vertical2 = euclidean_distance(p3, p6)
-    horizontal = euclidean_distance(p1, p4)
-
-    if horizontal == 0:
-        return 0.0
-
-    return (vertical1 + vertical2) / (2.0 * horizontal)
-
-def mouth_open_ratio(landmarks, mouth_indices, w, h):
-    top = (landmarks[mouth_indices[0]].x * w, landmarks[mouth_indices[0]].y * h)
-    bottom = (landmarks[mouth_indices[1]].x * w, landmarks[mouth_indices[1]].y * h)
-    left = (landmarks[mouth_indices[2]].x * w, landmarks[mouth_indices[2]].y * h)
-    right = (landmarks[mouth_indices[3]].x * w, landmarks[mouth_indices[3]].y * h)
-
-    vertical = euclidean_distance(top, bottom)
-    horizontal = euclidean_distance(left, right)
-
-    if horizontal == 0:
-        return 0.0
-
-    return vertical / horizontal
 
 def draw_face_mesh(frame, landmarks, w, h):
     """Draw face mesh with landmarks and connections"""
