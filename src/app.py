@@ -23,6 +23,8 @@ from features import (
     LEFT_EYE, RIGHT_EYE, MOUTH, LEFT_IRIS_CENTER, RIGHT_IRIS_CENTER,
     eye_aspect_ratio, mouth_open_ratio, iris_h_ratio, iris_v_ratio,
 )
+import db
+import profiles
 
 # ── Paths (resolved relative to project root) ─────────────────────────────────
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,28 +47,66 @@ _cfg_lock    = threading.Lock()
 _output_frame = None   # latest annotated BGR frame for MJPEG
 
 _state = {
-    "status":         "LOADING",
-    "status_color":   "grey",
-    "left_ear":       0.0,
-    "right_ear":      0.0,
-    "avg_ear":        0.0,
-    "mouth_ratio":    0.0,
-    "pitch":          0.0,
-    "yaw":            0.0,
-    "fps":            0.0,
-    "blink_rate":     0,
+    "status":            "LOADING",
+    "status_color":      "grey",
+    "left_ear":          0.0,
+    "right_ear":         0.0,
+    "avg_ear":           0.0,
+    "mouth_ratio":       0.0,
+    "pitch":             0.0,
+    "yaw":               0.0,
+    "fps":               0.0,
+    "blink_rate":        0,
     "micro_sleep_count": 0,
-    "gaze":           "--",
-    "events":         [],
+    "gaze":              "--",
+    "events":            [],
+    "fatigue_score":     0,      # 0-100 rolling fatigue score
+    "driver":            "Default",
 }
 
 _cfg = {
-    "alert_enabled":  True,
-    "ear_threshold":  0.40,
+    "alert_enabled":   True,
+    "ear_threshold":   0.40,
     "mouth_threshold": 0.10,
-    "calibrating":    False,
-    "calib_samples":  [],
+    "calibrating":     False,
+    "calib_samples":   [],
+    "driver":          "Default",
 }
+
+# ── Fatigue score: rolling weighted event window (5 min) ──────────────────────
+# Weight per event type — heavier for more dangerous states
+_FATIGUE_WEIGHTS = {
+    "DROWSY":       10,
+    "MICRO-SLEEP!": 15,
+    "YAWNING":       3,
+    "DISTRACTED":    2,
+}
+_FATIGUE_WINDOW   = 300  # seconds
+_fatigue_events: deque = deque()   # (timestamp, weight)
+_fatigue_lock = threading.Lock()
+
+
+def _record_fatigue(event: str) -> int:
+    """Append a fatigue event and return the current 0-100 score."""
+    weight = _FATIGUE_WEIGHTS.get(event, 0)
+    if weight == 0:
+        return _current_fatigue()
+    now = time.time()
+    with _fatigue_lock:
+        _fatigue_events.append((now, weight))
+        # Prune old events
+        while _fatigue_events and now - _fatigue_events[0][0] > _FATIGUE_WINDOW:
+            _fatigue_events.popleft()
+        score = sum(w for _, w in _fatigue_events)
+    return min(score, 100)
+
+
+def _current_fatigue() -> int:
+    now = time.time()
+    with _fatigue_lock:
+        while _fatigue_events and now - _fatigue_events[0][0] > _FATIGUE_WINDOW:
+            _fatigue_events.popleft()
+        return min(sum(w for _, w in _fatigue_events), 100)
 
 # ── Detection thread ──────────────────────────────────────────────────────────
 def _detection_loop():
@@ -230,6 +270,12 @@ def _detection_loop():
                 _play_alert()
                 last_beep_time = now
 
+        # ── Log new non-AWAKE events to SQLite and fatigue tracker ──────────
+        fatigue_score = _current_fatigue()
+        if status_text != prev_status and status_text not in ("AWAKE", "NO FACE", "LOADING"):
+            db.log_event(status_text, avg_ear=avg_ear, mouth_ratio=mouth_ratio)
+            fatigue_score = _record_fatigue(status_text)
+
         with _state_lock:
             events = _state["events"]
             if status_text != prev_status and status_text != "AWAKE":
@@ -248,6 +294,8 @@ def _detection_loop():
                 "fps": round(fps, 1),
                 "blink_rate": blink_rate, "micro_sleep_count": micro_sleep_count,
                 "gaze": gaze_str, "events": events,
+                "fatigue_score": fatigue_score,
+                "driver": _cfg.get("driver", "Default"),
             })
 
         prev_status = status_text
@@ -325,7 +373,10 @@ def calibrate():
         if samples:
             _cfg["ear_threshold"] = round(sum(samples) / len(samples) * 0.6, 3)
         new_thresh = _cfg["ear_threshold"]
-    return jsonify({"ear_threshold": new_thresh})
+        driver_name = _cfg.get("driver", "Default")
+    # Persist calibrated threshold to the driver's profile
+    profiles.save_threshold(driver_name, new_thresh)
+    return jsonify({"ear_threshold": new_thresh, "driver": driver_name})
 
 @app.route("/api/config")
 def get_config():
@@ -333,7 +384,49 @@ def get_config():
         return jsonify({k: _cfg[k] for k in ("alert_enabled","ear_threshold","mouth_threshold")})
 
 
+@app.route("/api/events_log")
+def events_log():
+    """Return persisted events from SQLite (survives restarts)."""
+    limit = request.args.get("limit", 50, type=int)
+    return jsonify(db.get_recent_events(min(limit, 200)))
+
+
+@app.route("/api/session_summary")
+def session_summary():
+    """Return per-event-type counts for the last hour."""
+    return jsonify(db.get_event_counts(window_seconds=3600))
+
+
+@app.route("/api/set_driver", methods=["POST"])
+def set_driver():
+    """
+    Load a driver profile and apply their saved EAR threshold.
+    POST body: {"driver": "Davis"}
+    """
+    body = request.get_json() or {}
+    name = str(body.get("driver", "Default")).strip()
+    if not name:
+        return jsonify({"error": "driver name required"}), 400
+    saved_thresh = profiles.load_threshold(name)
+    with _cfg_lock:
+        _cfg["driver"] = name
+        if saved_thresh is not None:
+            _cfg["ear_threshold"] = saved_thresh
+    return jsonify({
+        "driver":        name,
+        "ear_threshold": _cfg["ear_threshold"],
+        "profile_loaded": saved_thresh is not None,
+    })
+
+
+@app.route("/api/drivers")
+def list_drivers():
+    """Return the list of driver names that have saved calibration profiles."""
+    return jsonify(profiles.list_drivers())
+
+
 if __name__ == "__main__":
+    db.init_db()
     t = threading.Thread(target=_detection_loop, daemon=True)
     t.start()
     print("DriveSense dashboard → http://127.0.0.1:5001")
