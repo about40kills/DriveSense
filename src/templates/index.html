@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DriveSense — Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="/static/drivesense-app-icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;600&family=Outfit:wght@700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -70,6 +73,7 @@
       letter-spacing: 0.5px;
       color: #ffffff;
     }
+    .logo-accent { color: #22d3ee; }
     .header-right { display: flex; align-items: center; gap: 16px; }
     .fps-tag {
       font-family: 'Roboto Mono', monospace;
@@ -325,17 +329,21 @@
 <!-- ── Header ─────────────────────────────────────────────────────────────── -->
 <header>
   <div class="logo">
-    <!-- Eye with ECG alertness waveform -->
-    <svg viewBox="0 8 40 24" width="48" height="29" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <!-- Almond eye outline (upper + lower lids as one closed shape) -->
-      <path d="M 1,20 Q 20,8 39,20 Q 20,32 1,20 Z"
-            stroke="#00e87a" stroke-width="2" stroke-linejoin="round"/>
-      <!-- ECG waveform: flat → P wave → flat → QRS spike → flat → T wave → flat -->
-      <polyline
-        points="1,20 7,20 9,18 11,20 14,20 16,12 18,28 20,20 24,20 25.5,17 27.5,20 39,20"
-        stroke="#00e87a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- DriveSense mark: biometric signal line through a watching eye -->
+    <svg viewBox="0 36 120 44" width="68" height="25" xmlns="http://www.w3.org/2000/svg" aria-label="DriveSense logo">
+      <defs>
+        <linearGradient id="ds-eg" gradientUnits="userSpaceOnUse" x1="2" y1="40" x2="118" y2="75">
+          <stop offset="0" stop-color="#38BDF8"/><stop offset="1" stop-color="#06B6D4"/>
+        </linearGradient>
+      </defs>
+      <path d="M2 58 H12 L17.5 45 L23.5 69 L27.5 58 H30" fill="none" stroke="url(#ds-eg)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M90 58 H118" fill="none" stroke="url(#ds-eg)" stroke-width="6" stroke-linecap="round"/>
+      <path d="M30 58 Q60 24 90 58 Q60 90 30 58 Z" fill="none" stroke="#F1F5F9" stroke-width="6" stroke-linejoin="round"/>
+      <circle cx="60" cy="57" r="12.5" fill="url(#ds-eg)"/>
+      <circle cx="60" cy="57" r="5.4" fill="#0b0b12"/>
+      <circle cx="64.2" cy="52.8" r="2.1" fill="#FFFFFF"/>
     </svg>
-    <span class="logo-name">DriveSense</span>
+    <span class="logo-name">Drive<span class="logo-accent">Sense</span></span>
   </div>
   <div class="header-right">
     <span class="fps-tag" id="hdr-fps">-- FPS</span>
@@ -413,27 +421,14 @@
   <div class="card controls-card">
     <div class="card-title">Controls &amp; Settings</div>
 
-    <div class="ctrl-group">
-      <div class="ctrl-row">
-        <span class="ctrl-label">EAR Threshold</span>
-        <span class="ctrl-val" id="ear-val">0.40</span>
-      </div>
-      <input type="range" id="ear-slider" min="0.10" max="0.55" step="0.01" value="0.40"
-             oninput="onSlider()" />
-    </div>
-
-    <div class="ctrl-group">
-      <div class="ctrl-row">
-        <span class="ctrl-label">Mouth Threshold</span>
-        <span class="ctrl-val" id="mouth-val">0.10</span>
-      </div>
-      <input type="range" id="mouth-slider" min="0.05" max="0.30" step="0.01" value="0.10"
-             oninput="onSlider()" />
-    </div>
-
     <div class="btn-row">
       <button class="btn on" id="alert-btn" onclick="toggleAlert()">🔔 Alert: ON</button>
       <button class="btn cal" id="calib-btn" onclick="runCalibration(this)">⚙ Calibrate Eyes</button>
+    </div>
+
+    <div style="margin-top:14px;font-size:0.74rem;color:var(--muted);display:flex;justify-content:space-between;">
+      <span>EAR threshold: <span id="ear-val">0.40</span></span>
+      <span>Mouth threshold: <span id="mouth-val">0.10</span></span>
     </div>
   </div>
 
@@ -598,28 +593,6 @@ function renderLog(events) {
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
-let _sliderTimer = null;
-
-function onSlider() {
-  const ear   = parseFloat(document.getElementById('ear-slider').value);
-  const mouth = parseFloat(document.getElementById('mouth-slider').value);
-  document.getElementById('ear-val').textContent   = ear.toFixed(2);
-  document.getElementById('mouth-val').textContent = mouth.toFixed(2);
-
-  // Update threshold line on chart
-  chart.data.datasets[2].data = Array(N).fill(ear);
-  chart.update('none');
-
-  // Debounce the API call
-  clearTimeout(_sliderTimer);
-  _sliderTimer = setTimeout(() => {
-    fetch('/api/set_threshold', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ear_threshold: ear, mouth_threshold: mouth }),
-    });
-  }, 300);
-}
 
 function toggleAlert() {
   fetch('/api/toggle_alert', { method: 'POST' })
@@ -643,7 +616,6 @@ function runCalibration(btn) {
     .then(r => r.json())
     .then(d => {
       const v = parseFloat(d.ear_threshold).toFixed(2);
-      document.getElementById('ear-slider').value = v;
       document.getElementById('ear-val').textContent = v;
       chart.data.datasets[2].data = Array(N).fill(parseFloat(v));
       chart.update('none');
@@ -659,9 +631,7 @@ function runCalibration(btn) {
 fetch('/api/config')
   .then(r => r.json())
   .then(d => {
-    document.getElementById('ear-slider').value   = d.ear_threshold;
     document.getElementById('ear-val').textContent = parseFloat(d.ear_threshold).toFixed(2);
-    document.getElementById('mouth-slider').value   = d.mouth_threshold;
     document.getElementById('mouth-val').textContent = parseFloat(d.mouth_threshold).toFixed(2);
     chart.data.datasets[2].data = Array(N).fill(d.ear_threshold);
     chart.update('none');
