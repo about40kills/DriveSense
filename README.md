@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/branding/drivesense-logo-dark.svg">
+    <img src="assets/branding/drivesense-logo.svg" alt="DriveSense" width="420">
+  </picture>
+</p>
+
 # DriveSense — Real-Time Driver Drowsiness Detection
 
 DriveSense is a real-time driver drowsiness detection system that uses a standard webcam, MediaPipe facial landmarks, and a scikit-learn Random Forest classifier to continuously monitor driver alertness and trigger audible alerts before fatigue becomes dangerous.
@@ -16,6 +23,9 @@ The system classifies three driver states — **AWAKE**, **DROWSY**, and **YAWNI
 - **Cross-platform audible alert** — synthesised 880 Hz tone via `sounddevice` (works on macOS, Windows, Linux)
 - **Web dashboard** — live MJPEG video stream, SSE-driven biometric metrics, Chart.js EAR/mouth timeline, adjustable thresholds, eye calibration
 - **Eye calibration** — 3-second baseline measurement auto-sets the EAR threshold for the current driver
+- **Driver profiles** — calibrated EAR thresholds persist per-driver as JSON under `data/profiles/`, reloaded on driver switch
+- **Fatigue score** — rolling 5-minute weighted score (0–100) computed from DROWSY/YAWNING/MICRO-SLEEP/DISTRACTED event frequency
+- **Event persistence** — non-AWAKE events are logged to `data/events.db` (SQLite) so history survives app restarts
 
 ---
 
@@ -28,6 +38,10 @@ The system has two phases:
 
 ### Phase 2 — Live Inference
 `live_ml_app.py` (terminal/OpenCV window) and `app.py` (web dashboard) compute the same features in real-time and pass them to the trained model for prediction, augmented by rule-based checks for head pose, gaze, and micro-sleep.
+
+`app.py` additionally persists state across restarts via two helper modules:
+- **`db.py`** — SQLite event log (`data/events.db`); `log_event()` records each non-AWAKE transition, `get_recent_events()` / `get_event_counts()` back the `/api/events_log` and `/api/session_summary` endpoints.
+- **`profiles.py`** — per-driver calibration storage (`data/profiles/{name}.json`); `save_threshold()` / `load_threshold()` persist the EAR threshold set during calibration so it's restored when a driver is selected again via `/api/set_driver`.
 
 ### Feature Extraction (`src/features.py`)
 All scripts share a single feature module:
@@ -69,6 +83,8 @@ DriveSense/
 │   ├── compare_models.py            # Rule-based vs ML comparison
 │   ├── live_ml_app.py               # Live detection (OpenCV window)
 │   ├── app.py                       # Live detection (web dashboard)
+│   ├── db.py                        # SQLite event log (data/events.db)
+│   ├── profiles.py                  # Per-driver calibration profiles (data/profiles/)
 │   ├── drowsiness_warning.py        # Rule-based detection (face mesh overlay)
 │   └── templates/
 │       └── index.html               # Web dashboard frontend
@@ -115,7 +131,7 @@ python src/evaluate_model.py
 # 5a. Run live detection — OpenCV window
 python src/live_ml_app.py
 
-# 5b. Run live detection — web dashboard (open http://127.0.0.1:5000)
+# 5b. Run live detection — web dashboard (open http://127.0.0.1:5001)
 python src/app.py
 
 # 6. Compare rule-based vs ML detection
@@ -126,6 +142,24 @@ python src/drowsiness_warning.py
 ```
 
 Press **q** to quit any webcam window.
+
+---
+
+## Dashboard API (`app.py`)
+
+| Route | Method | Description |
+|---|---|---|
+| `/` | GET | Dashboard page |
+| `/video_feed` | GET | MJPEG annotated camera stream |
+| `/events` | GET | SSE stream of live state (biometrics, status, fatigue score, events) |
+| `/api/toggle_alert` | POST | Enable/disable the audible alert |
+| `/api/set_threshold` | POST | Manually set the EAR/mouth thresholds |
+| `/api/calibrate` | POST | Run eye calibration, persist threshold to active driver's profile |
+| `/api/config` | GET | Current alert/EAR/mouth thresholds |
+| `/api/events_log` | GET | Persisted event history from `data/events.db` (`?limit=`, max 200) |
+| `/api/session_summary` | GET | Event counts grouped by type for the last hour |
+| `/api/set_driver` | POST | Switch active driver, restoring their saved EAR threshold (`{"driver": "Davis"}`) |
+| `/api/drivers` | GET | List driver names with saved calibration profiles |
 
 ---
 
@@ -179,3 +213,15 @@ Full comparison saved to `results/comparison_report.txt`.
 | Frontend chart | Chart.js |
 | Audio alert | sounddevice + numpy |
 | Data handling | pandas |
+
+---
+
+## Future Work
+
+The current system runs as a desktop app (laptop + webcam), which is fine for development and demoing but not how a driver-monitoring system would actually be used in a vehicle. Planned path to real in-car deployment:
+
+- **Edge hardware** — port the inference pipeline to a Raspberry Pi 5 or NVIDIA Jetson Nano as a self-contained, dashboard- or steering-column-mounted unit with a USB or CSI camera, replacing the laptop-and-webcam setup.
+- **Headless operation** — run as a `systemd` service that auto-starts on boot; no monitor or browser needed while driving. The audible alert becomes the primary driver-facing output, with the web dashboard kept around for post-drive review or fleet monitoring rather than in-cabin use.
+- **Configurable camera source** — `cv2.VideoCapture(0)` is currently hardcoded across all scripts; a USB camera on embedded hardware won't reliably enumerate as index 0, so this needs to become configurable.
+- **Vehicle power** — powered from the car's 12V accessory socket via a buck converter or USB port instead of a laptop battery.
+- **Real vehicle validation** — all current testing is stationary; validation with vibration, variable lighting, and genuine fatigue in a moving vehicle is required before any safety-critical use.
