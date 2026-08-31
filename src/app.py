@@ -265,7 +265,7 @@ def _detection_loop():
 
         sc = _STATUS_COLOR.get(status_text, "grey")
 
-        if alert_on and status_text in ("DROWSY","YAWNING","MICRO-SLEEP!","DISTRACTED","NO FACE"):
+        if alert_on and status_text in ("DROWSY","YAWNING","MICRO-SLEEP!","DISTRACTED"):
             if now - last_beep_time > 1.0:
                 _play_alert()
                 last_beep_time = now
